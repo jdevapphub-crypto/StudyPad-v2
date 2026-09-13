@@ -1,1 +1,94 @@
-
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StudyPad - AI Humanizer</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:Inter,system-ui,sans-serif}
+body{background:#0a0a0f;color:#fff;min-height:100vh}
+.topbar{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;background:#11111a;border-bottom:1px solid #222}
+.logo{font-weight:800;font-size:18px}.logo span{color:#7c5cfc}
+.nav{display:flex;gap:10px;align-items:center}
+.nav a{color:#aaa;text-decoration:none;margin-left:10px;font-size:14px;padding:8px 14px;border-radius:8px}
+.nav a.active{color:#fff;background:#1a1a26}
+.nav-back{background:#1a1a26!important;border:1px solid #2a2a35;color:#fff!important}
+.nav-back:hover{background:#2a2a3a!important}
+.container{max-width:1100px;margin:0 auto;padding:30px 20px}
+h1{font-size:32px;margin-bottom:8px}h1 span{color:#7c5cfc}
+.credit{opacity:0.4;font-size:13px;color:#888;margin-bottom:20px}
+.tabs{display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap}
+.tab{padding:10px 18px;border-radius:10px;border:1px solid #2a2a35;background:#1a1a26;color:#aaa;cursor:pointer;font-weight:600}
+.tab.active{background:#7c5cfc;color:#fff;border-color:#7c5cfc}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media(max-width:800px){.grid{grid-template-columns:1fr}}
+.box{background:#15151f;border:1px solid #232336;border-radius:14px;padding:14px}
+.box-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;color:#aaa;font-size:13px}
+textarea{width:100%;height:280px;background:#0f0f17;border:1px solid #2a2a3a;border-radius:10px;color:#fff;padding:14px;resize:none;font-size:15px;outline:none}
+textarea:focus{border-color:#7c5cfc}
+.output{width:100%;height:280px;background:#0f0f17;border:1px solid #2a2a3a;border-radius:10px;color:#ddd;padding:14px;font-size:15px;overflow:auto;white-space:pre-wrap}
+.btn-primary{width:100%;margin-top:14px;padding:14px;background:linear-gradient(90deg,#7c5cfc,#5b8def);border:none;border-radius:12px;color:#fff;font-weight:700;font-size:16px;cursor:pointer}
+.btn-primary:disabled{opacity:0.6}
+.badge{padding:4px 10px;border-radius:20px;background:#1e1e2d;color:#aaa;font-size:11px}
+</style>
+</head>
+<body>
+<div class="topbar"><div class="logo">📚 StudyPad <span>AI</span></div><div class="nav"><a href="index.html" class="nav-back">← Back to StudyPad</a><a href="#" class="active">Paraphraser</a></div></div>
+<div class="container">
+<h1>AI <span>Humanizer</span> & Paraphraser</h1>
+<p class="credit">Joheliv: Jason's Labs</p>
+<div class="tabs">
+<button class="tab active" data-mode="humanize">✨ Humanize (Make Undetectable)</button>
+<button class="tab" data-mode="paraphrase">📝 Paraphrase</button>
+<button class="tab" data-mode="detect">🔍 Detect AI Score</button>
+</div>
+<div class="grid">
+<div class="box">
+<div class="box-header"><span>Input Text</span><span class="badge" id="wordCount">0 words</span></div>
+<textarea id="inputText" placeholder="Paste your AI essay here..."></textarea>
+</div>
+<div class="box">
+<div class="box-header"><span>Output</span><span style="cursor:pointer" onclick="copyOutput()">📋 Copy</span></div>
+<div id="output" class="output">Your humanized text will appear here...</div>
+</div>
+</div>
+<button class="btn-primary" id="actionBtn">✨ Humanize Text</button>
+</div>
+<script>
+const WORKER_URL = "https://super-fire-c62cstudypad-proxy.jdevapphub.workers.dev/";
+let mode = "humanize";
+const input = document.getElementById('inputText');
+const output = document.getElementById('output');
+const btn = document.getElementById('actionBtn');
+const tabs = document.querySelectorAll('.tab');
+const prompts = {
+  humanize: "Rewrite to sound 100% human-written, natural, varied sentence structure, contractions, slight imperfections, conversational academic tone. Keep meaning and length. Return only rewritten text:\n\n",
+  paraphrase: "Paraphrase to be unique plagiarism-free, same meaning, different words. Return only paraphrased text:\n\n",
+  detect: "Analyze and give AI Probability %, Human %, 3 reasons, and how to make more human:\n\n"
+};
+tabs.forEach(t=>{
+  t.addEventListener('click', ()=>{
+    tabs.forEach(x=>x.classList.remove('active')); t.classList.add('active'); mode = t.dataset.mode;
+    btn.textContent = mode==='humanize'?'✨ Humanize Text - Make Undetectable':mode==='paraphrase'?'📝 Paraphrase Now':'🔍 Detect AI Score';
+  });
+});
+input.addEventListener('input', ()=>{
+  const words = input.value.trim()? input.value.trim().split(/\s+/).length : 0;
+  document.getElementById('wordCount').textContent = words + ' words';
+});
+async function doAction(){
+  const text = input.value.trim(); if(!text){ alert('Paste text first'); return; }
+  btn.disabled=true; btn.textContent='⏳ Processing...'; output.textContent='Thinking...';
+  try{
+    const res = await fetch(WORKER_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ model: 'openai/gpt-oss-20b', messages: [{role:'user', content: prompts[mode] + text}], temperature: 0.8, max_tokens: 2000 }) });
+    const data = await res.json();
+    output.textContent = data.choices?.[0]?.message?.content || JSON.stringify(data);
+    btn.textContent = '✅ Done';
+  }catch(e){ output.textContent = 'Error: ' + e.message; btn.textContent = '❌ Error'; }
+  btn.disabled=false;
+}
+function copyOutput(){ navigator.clipboard.writeText(output.textContent); alert('Copied!'); }
+btn.addEventListener('click', doAction);
+</script>
+</body>
+</html>
