@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StudyPad DOC — Smart Mode</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:system-ui}
+body{background:#f8f8ff;min-height:100vh}
+.header{background:linear-gradient(135deg,#4f46e5,#7c5cfc);color:white;padding:16px;text-align:center;position:sticky;top:0;z-index:10}
+.header h2{font-size:20px;font-weight:700}
+.header small{font-size:12px;opacity:.9;display:block;margin-top:4px}
+.upload-area{border:2px dashed #4f46e5;background:white;border-radius:16px;padding:30px;text-align:center;margin:20px 20px 8px;cursor:pointer}
+.upload-area.loaded{border:2px solid #22c55e;background:#f0fdf4}
+.upload-area.processing{border:2px solid #f59e0b;background:#fef3c7}
+.upload-check{display:none;width:56px;height:56px;background:#22c55e;color:white;border-radius:50%;font-size:32px;line-height:56px;margin:0 auto 12px}
+.upload-area.loaded.upload-check{display:block}
+.upload-progress{display:none;height:6px;background:#fde68a;border-radius:3px;margin:12px auto 0;max-width:220px;overflow:hidden}
+.upload-area.processing.upload-progress{display:block}
+.upload-progress>div{height:100%;background:#f59e0b;width:0%}
+.upload-note{font-size:11px;color:#9ca3af;text-align:center;margin:0 20px 16px}
+
+.saved-section{max-width:800px;margin:0 auto;padding:0 20px 8px}
+.saved-header{font-size:13px;font-weight:700;color:#4338ca;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.saved-empty{font-size:12.5px;color:#9ca3af;padding:8px 2px}
+.saved-list{display:flex;flex-direction:column;gap:8px;margin-bottom:8px}
+.saved-item{background:white;border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px;display:flex;align-items:center;gap:10px}
+.saved-item-info{flex:1;min-width:0}
+.saved-item-name{font-size:13px;font-weight:600;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.saved-item-meta{font-size:11px;color:#9ca3af;margin-top:2px}
+.saved-item.active{border-color:#4f46e5;background:#eef2ff}
+.saved-btn{border:none;border-radius:8px;padding:8px 10px;font-size:12px;font-weight:600;cursor:pointer;flex-shrink:0}
+.saved-btn-open{background:#4f46e5;color:white}
+.saved-btn-del{background:#fee2e2;color:#b91c1c}
+.saved-btn-del:active,.saved-btn-open:active{transform:scale(.96)}
+.saved-toast{font-size:11.5px;color:#b45309;background:#fef3c7;border-radius:8px;padding:8px 10px;margin-bottom:8px;display:none}
+
+#pages{display:flex;flex-direction:column;gap:16px;padding:16px;max-width:800px;margin:0 auto}
+.page-card{background:white;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,.08);overflow:hidden;cursor:pointer;border:2px solid transparent}
+.page-card:active{border-color:#4f46e5;transform:scale(.98)}
+.page-num{background:#4f46e5;color:white;padding:6px 12px;font-size:13px;font-weight:bold;display:flex;justify-content:space-between}
+canvas{width:100%;display:block}
+.brief-btn{background:rgba(255,255,255,.2);color:white;border:none;padding:5px 12px;border-radius:20px;font-size:12px}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;padding:20px;z-index:100}
+.modal.show{display:flex}
+.modal-box{background:white;border-radius:16px;padding:20px;max-width:560px;width:100%;max-height:88vh;overflow:auto}
+.close{float:right;background:#eee;border:none;padding:6px 12px;border-radius:8px;cursor:pointer}
+.loading-box{text-align:center;padding:30px;color:#6b7280}
+.spinner{width:36px;height:36px;border:3px solid #e0e7ff;border-top-color:#4f46e5;border-radius:50%;margin:0 auto 14px;animation:spin.8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.brief-section{margin-bottom:14px;padding:14px;border-radius:10px;line-height:1.65;font-size:14px}
+.brief-section.summary{background:#eef2ff;border-left:4px solid #6366f1}
+.brief-section.points{background:#f5f3ff;border-left:4px solid #4f46e5}
+.brief-section.example{background:#fef3c7;border-left:4px solid #f59e0b}
+.brief-section.remember{background:#fce7f3;border-left:4px solid #ec4899}
+.brief-section.label{font-weight:700;font-size:12px;text-transform:uppercase;margin-bottom:8px;display:block;letter-spacing:.3px}
+.brief-section ul{padding-left:18px;margin:0}
+.brief-section li{margin-bottom:7px}
+.action-row{display:flex;gap:8px;margin-top:14px}
+.action-row button{flex:1;padding:11px;border:none;border-radius:10px;font-weight:600;font-size:13px;cursor:pointer}
+.btn-listen{background:#4f46e5;color:white}
+.btn-copy{background:#f3f4f6;color:#111827}
+.badge-ai{background:#dcfce7;color:#166534;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700;margin-left:6px}
+.badge-local{background:#fef3c7;color:#92400e}
+
+.quiz-wrap{margin-top:18px;padding:16px;border-radius:12px;background:#0f172a;color:#e2e8f0}
+.quiz-wrap .label{color:#a5b4fc}
+.quiz-progress{font-size:12px;color:#94a3b8;margin-bottom:12px}
+.quiz-q{margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid #1e293b}
+.quiz-q:last-child{border-bottom:none;margin-bottom:0;padding-bottom:0}
+.quiz-q-text{font-size:14px;font-weight:600;margin-bottom:10px;line-height:1.5}
+.quiz-opts{display:flex;flex-direction:column;gap:8px}
+.quiz-opt{text-align:left;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:8px;padding:10px 12px;font-size:13px;cursor:pointer;transition:background .15s,border-color .15s}
+.quiz-opt:active{transform:scale(.99)}
+.quiz-opt.correct{background:#14532d;border-color:#22c55e;color:#bbf7d0}
+.quiz-opt.wrong{background:#450a0a;border-color:#ef4444;color:#fecaca}
+.quiz-opt.disabled{cursor:default}
+.quiz-explain{margin-top:8px;font-size:12.5px;color:#cbd5e1;background:#1e293b;border-radius:8px;padding:9px 11px;display:none}
+.quiz-score{margin-top:4px;font-size:14px;font-weight:700;color:#a5b4fc;text-align:center;display:none}
+</style>
+</head>
+<body>
+<div class="header"><h2>📚 StudyPad DOC</h2><small>Tap page → get a full study brief + quiz</small></div>
+<div class="upload-area" id="drop"><div class="upload-check">✓</div><h3 id="uploadTitle">📄 Tap to Upload PDF</h3><p id="uploadSub">Textbook, notes, past paper</p><div class="upload-progress"><div id="progressFill"></div></div><input type="file" id="pdfFile" accept="application/pdf" hidden></div>
+<div class="upload-note">Uploaded documents are saved automatically so they're here next time.</div>
+
+<div class="saved-section">
+  <div class="saved-header">📁 Saved Documents</div>
+  <div class="saved-toast" id="savedToast"></div>
+  <div class="saved-list" id="savedList"></div>
+  <div class="saved-empty" id="savedEmpty">No saved documents yet — upload one above.</div>
+</div>
+
+<div id="pages"></div>
+<div class="modal" id="modal"><div class="modal-box"><button class="close" id="closeModal">✕</button><h3 id="modalTitle">📖 Page Brief</h3><div id="modalLoading" class="loading-box" style="display:none"><div class="spinner"></div><div>AI is reading and building your brief...</div></div><div id="modalContent"></div></div></div>
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+const WORKER_URL='https://young-recipe-a9fastudypadsmart.jdevapphub.workers.dev';
+let pageTexts=[];
+let currentDocId=null;
+const hasStorage = typeof window.storage !== 'undefined' && window.storage;
+
+const dropArea=document.getElementById('drop'), uploadTitle=document.getElementById('uploadTitle'), uploadSub=document.getElementById('uploadSub'), progressFill=document.getElementById('progressFill');
+function setProcessing(t){dropArea.classList.remove('loaded');dropArea.classList.add('processing');uploadTitle.textContent=t;progressFill.style.width='10%'}
+function setLoaded(f,c){dropArea.classList.remove('processing');dropArea.classList.add('loaded');uploadTitle.textContent=f;uploadSub.textContent=`${c} pages ready`;progressFill.style.width='100%'}
+function setError(m){dropArea.classList.remove('processing','loaded');uploadTitle.textContent='❌ '+m;}
+function resetUploadArea(){dropArea.classList.remove('processing','loaded');uploadTitle.textContent='📄 Tap to Upload PDF';uploadSub.textContent='Textbook, notes, past paper';progressFill.style.width='0%';}
+
+dropArea.addEventListener('click',()=>{if(dropArea.classList.contains('loaded'))return;document.getElementById('pdfFile').click()});
+document.getElementById('pdfFile').addEventListener('change',async e=>{
+  const file=e.target.files[0]; if(!file)return;
+  setProcessing('⏳ Reading '+file.name);
+  try{
+    const buf=await file.arrayBuffer();
+    await renderPdfIntoPages(buf, file.name);
+    setLoaded(file.name, pageTexts.filter(Boolean).length || (pageTexts.length-1));
+    await autoSaveDocument(buf, file.name);
+  }catch(err){ setError('Could not read PDF'); }
+  finally{ e.target.value=''; }
+});
+
+// Core PDF rendering, shared by fresh uploads and re-opening a saved document
+async function renderPdfIntoPages(buf, filename){
+  const pdf=await pdfjsLib.getDocument(buf).promise;
+  document.getElementById('pages').innerHTML=''; pageTexts=[];
+  for(let i=1;i<=pdf.numPages;i++){
+    const page=await pdf.getPage(i); const tc=await page.getTextContent();
+    const text=tc.items.map(s=>s.str).join(' ').trim(); pageTexts[i]=text;
+    const vp=page.getViewport({scale:1.5}); const canvas=document.createElement('canvas'); const ctx=canvas.getContext('2d');
+    canvas.width=vp.width; canvas.height=vp.height; await page.render({canvasContext:ctx,viewport:vp}).promise;
+    const card=document.createElement('div'); card.className='page-card';
+    card.innerHTML=`<div class="page-num"><span>Page ${i}</span><span class="brief-btn">✨ Full Brief + Quiz</span></div>`;
+    card.appendChild(canvas); card.onclick=()=>openBrief(i);
+    document.getElementById('pages').appendChild(card);
+    progressFill.style.width=Math.round(i/pdf.numPages*100)+'%';
+  }
+  return pdf.numPages;
+}
+
+function openBrief(n){document.getElementById('modal').classList.add('show');document.getElementById('modalTitle').textContent=`📖 Page ${n} — Study Brief`;document.getElementById('modalContent').innerHTML='';document.getElementById('modalLoading').style.display='block';aiBrief(pageTexts[n]||'');}
+document.getElementById('closeModal').onclick=()=>document.getElementById('modal').classList.remove('show');
+
+// ---------- Persistent storage: auto-save / list / open / delete ----------
+function showToast(msg){
+  const t=document.getElementById('savedToast'); t.textContent=msg; t.style.display='block';
+  setTimeout(()=>{t.style.display='none';},4000);
+}
+function arrayBufferToBase64(buf){
+  let binary=''; const bytes=new Uint8Array(buf); const chunk=0x8000;
+  for(let i=0;i<bytes.length;i+=chunk){ binary+=String.fromCharCode.apply(null, bytes.subarray(i,i+chunk)); }
+  return btoa(binary);
+}
+function base64ToArrayBuffer(b64){
+  const binary=atob(b64); const bytes=new Uint8Array(binary.length);
+  for(let i=0;i<binary.length;i++){ bytes[i]=binary.charCodeAt(i); }
+  return bytes.buffer;
+}
+function humanSize(bytes){
+  if(bytes<1024) return bytes+' B';
+  if(bytes<1024*1024) return (bytes/1024).toFixed(0)+' KB';
+  return (bytes/(1024*1024)).toFixed(1)+' MB';
+}
+
+async function autoSaveDocument(buf, filename){
+  currentDocId = 'doc_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
+  if(!hasStorage) return; // storage not available in this environment — skip silently
+  try{
+    const base64 = arrayBufferToBase64(buf);
+    const meta = { id: currentDocId, name: filename, pages: (pageTexts.length-1), sizeBytes: buf.byteLength, savedAt: Date.now() };
+    await window.storage.set('doc:'+currentDocId, base64, false);
+    await window.storage.set('meta:'+currentDocId, JSON.stringify(meta), false);
+    await refreshSavedList();
+  }catch(err){
+    console.error('Auto-save failed:', err);
+    showToast("Couldn't save this document for next time (it may be too large) — you can still study it now.");
+  }
+}
+
+async function refreshSavedList(){
+  const listEl=document.getElementById('savedList'), emptyEl=document.getElementById('savedEmpty');
+  if(!hasStorage){ emptyEl.textContent='Automatic saving isn\'t available in this environment.'; emptyEl.style.display='block'; listEl.innerHTML=''; return; }
+  try{
+    const res = await window.storage.list('meta:', false);
+    const keys = (res && res.keys) || [];
+    if(!keys.length){ listEl.innerHTML=''; emptyEl.style.display='block'; return; }
+    const metas=[];
+    for(const k of keys){
+      try{ const r=await window.storage.get(k, false); if(r && r.value) metas.push(JSON.parse(r.value)); }
+      catch(e){ /* skip unreadable entry */ }
+    }
+    metas.sort((a,b)=> (b.savedAt||0) - (a.savedAt||0));
+    if(!metas.length){ listEl.innerHTML=''; emptyEl.style.display='block'; return; }
+    emptyEl.style.display='none';
+    listEl.innerHTML = metas.map(m => `
+      <div class="saved-item ${m.id===currentDocId?'active':''}" data-id="${m.id}">
+        <div class="saved-item-info">
+          <div class="saved-item-name">${escapeHtml(m.name||'Untitled.pdf')}</div>
+          <div class="saved-item-meta">${m.pages||'?'} pages · ${humanSize(m.sizeBytes||0)} · ${new Date(m.savedAt||0).toLocaleDateString()}</div>
+        </div>
+        <button class="saved-btn saved-btn-open" data-action="open" data-id="${m.id}">Open</button>
+        <button class="saved-btn saved-btn-del" data-action="delete" data-id="${m.id}">🗑️</button>
+      </div>
+    `).join('');
+    listEl.querySelectorAll('[data-action="open"]').forEach(btn=>{
+      btn.onclick=()=>openSavedDocument(btn.getAttribute('data-id'));
+    });
+    listEl.querySelectorAll('[data-action="delete"]').forEach(btn=>{
+      btn.onclick=()=>deleteSavedDocument(btn.getAttribute('data-id'));
+    });
+  }catch(err){
+    console.error('Could not list saved documents:', err);
+    emptyEl.textContent='Could not load saved documents.'; emptyEl.style.display='block';
+  }
+}
+
+async function openSavedDocument(id){
+  if(!hasStorage) return;
+  setProcessing('⏳ Opening saved document...');
+  try{
+    const r = await window.storage.get('doc:'+id, false);
+    const mr = await window.storage.get('meta:'+id, false);
+    if(!r || !r.value) throw new Error('Document data missing');
+    const meta = mr && mr.value ? JSON.parse(mr.value) : { name:'Saved document' };
+    const buf = base64ToArrayBuffer(r.value);
+    currentDocId = id;
+    const numPages = await renderPdfIntoPages(buf, meta.name);
+    setLoaded(meta.name, numPages);
+    await refreshSavedList();
+  }catch(err){
+    console.error('Could not open saved document:', err);
+    setError('Could not open saved document');
+  }
+}
+
+async function deleteSavedDocument(id){
+  if(!hasStorage) return;
+  try{
+    try{
+      const r = await window.storage.get('doc:'+id, false);
+      if(r) await window.storage.delete('doc:'+id, false);
+    }catch(e){ /* already gone */ }
+    try{
+      const mr = await window.storage.get('meta:'+id, false);
+      if(mr) await window.storage.delete('meta:'+id, false);
+    }catch(e){ /* already gone */ }
+    if(currentDocId===id){
+      currentDocId=null;
+      document.getElementById('pages').innerHTML='';
+      pageTexts=[];
+      resetUploadArea();
+    }
+    await refreshSavedList();
+    showToast('Document deleted.');
+  }catch(err){
+    console.error('Delete failed:', err);
+    showToast('Could not delete that document — try again.');
+  }
+}
+
+// Load saved documents list on startup
+refreshSavedList();
+
+// ---------- AI brief + quiz generation ----------
+async function aiBrief(text){
+  if(!text||text.length<30){
+    document.getElementById('modalLoading').style.display='none';
+    renderBrief({
+      points:["This page is mostly diagrams, images or a table rather than running text","Study the labels, arrows and the relationships they show","Note what is being compared, split into parts, or sequenced","Check any captions or headings near the image for context"],
+      summary:"This page communicates mainly through a visual — a diagram, chart, image or table — rather than paragraphs of text. To understand it, trace how the parts connect: what points to what, what is grouped together, and what order things happen in. The labels and captions usually carry the key vocabulary you'll need to know.",
+      example:"Think of it like a map: the value isn't in reading it top to bottom, it's in tracing the connections between the labelled parts.",
+      remember:"Redraw this diagram from memory and label every part — that's the fastest way to prove you understand it.",
+      quiz:[
+        {q:"What is usually the best way to study a page that is mostly a diagram or image?",options:["Memorize it word for word","Trace how the labelled parts connect to each other","Skip it, it's not important","Read only the first line"],correct:1,explain:"Diagrams encode relationships — tracing connections between labelled parts is how you actually learn from them."},
+        {q:"Where do the key vocabulary words usually appear on a diagram-heavy page?",options:["Nowhere, diagrams have no vocabulary","In the labels and captions","Only in the page number","In a footnote on a different page"],correct:1,explain:"Labels and captions on diagrams carry the specific terms you're expected to know."}
+      ]
+    },false); return;
+  }
+  const prompt=`You are StudyPad, an expert study-notes assistant. Read this textbook page carefully and produce a genuinely USEFUL, DETAILED study brief — not a shallow summary. A student should be able to understand and revise this page from your brief alone. Return ONLY valid JSON, no markdown fences, no preamble:
+{
+  "points": ["6 to 8 specific, information-dense bullet points covering every important idea, fact, definition, formula, cause/effect or step on this page — not generic filler. Each point max 22 words."],
+  "summary": "A thorough 5-7 sentence explanation of what this page teaches, written in clear, simple language (roughly grade 8-9 level) but not dumbed down on content — include the actual facts, terms and reasoning from the page, not vague generalities.",
+  "example": "One concrete, real-life or worked example that makes the concept click, specific to this page's content — not a generic analogy.",
+  "remember": "One precise, exam-style sentence capturing the single most important idea to memorize from this page.",
+  "quiz": [
+    {"q":"a question testing a specific fact or idea from this page","options":["4 options, plausible distractors, only one correct"],"correct":0,"explain":"one sentence explaining why the correct answer is right, referencing the page content"}
+  ]
+}
+Rules: Base everything strictly on the PAGE TEXT below — do not invent facts not implied by it. Write 3 quiz questions covering different parts of the page. "correct" is the zero-based index into "options". Points must be specific and useful, never generic filler like "this page is about X". PAGE TEXT: ${text.slice(0,6000)}`;
+
+  try{
+    const res=await fetch(WORKER_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'llama-3.3-70b-versatile',messages:[{role:'system',content:'You reply with valid JSON only, matching the exact schema requested. You write detailed, specific, non-generic study material.'},{role:'user',content:prompt}],temperature:0.4,max_tokens:1600})});
+    const data=await res.json();
+    let raw=data.choices?.[0]?.message?.content||''; let brief; try{brief=JSON.parse(raw);}catch{const m=raw.match(/\{[\s\S]*\}/); brief=m?JSON.parse(m[0]):null;}
+    if(!brief||!brief.points||!brief.summary) throw new Error('Bad AI');
+    if(!Array.isArray(brief.quiz)) brief.quiz=[];
+    document.getElementById('modalLoading').style.display='none'; renderBrief(brief,true);
+  }catch(err){
+    document.getElementById('modalLoading').style.display='none';
+    const fb=localBrief(text); renderBrief(fb,false);
+  }
+}
+function localBrief(text){
+  const sents=text.split(/[.!?]+/).map(s=>s.trim()).filter(s=>s.length>25);
+  const points=sents.slice(0,7).map(s=>s.slice(0,140));
+  const summary=sents.slice(0,5).join('. ')+(sents.length?'.':'');
+  const quiz=[];
+  if(sents.length>0){
+    quiz.push({q:"According to this page, which statement is TRUE?",options:[sents[0].slice(0,90),"The opposite of what the page says","An unrelated random fact","None of the information on this page"],correct:0,explain:"This is taken directly from the page text — the other options don't reflect what's written here."});
+  }
+  if(sents.length>2){
+    quiz.push({q:"Which of these best reflects a second key idea on this page?",options:[sents[2].slice(0,90),"A definition from an unrelated topic","A statement contradicting the page","A fact not mentioned anywhere on the page"],correct:0,explain:"This statement is drawn directly from the page's own text."});
+  }
+  return {
+    points:points.length?points:["Could not extract clear sentences — try re-reading the original page image."],
+    summary:summary||"Not enough text could be extracted from this page to build a full summary — check the page image directly.",
+    example:"Relate the page's main idea to something you already know or see day to day — it helps the concept stick.",
+    remember:sents[0]?sents[0].slice(0,140):"Review this page's image closely for the main idea.",
+    quiz
+  };
+}
+function renderBrief(b,isAI){
+  const badge=isAI?'<span class="badge-ai">AI ✨</span>':'<span class="badge-ai badge-local">Local (offline)</span>';
+  const pointsHtml=(b.points||[]).map(p=>`<li>${escapeHtml(p)}</li>`).join('');
+  let html=`<div style="margin-bottom:8px;font-size:12px;color:#6b7280">Smart Brief ${badge}</div>
+  <div class="brief-section summary"><span class="label">📝 Full Summary</span>${escapeHtml(b.summary||'')}</div>
+  <div class="brief-section points"><span class="label">📌 Key Points — Must Know</span><ul>${pointsHtml}</ul></div>
+  <div class="brief-section example"><span class="label">🌍 Real Example</span>${escapeHtml(b.example||'')}</div>
+  <div class="brief-section remember"><span class="label">🎯 Remember for Test</span>${escapeHtml(b.remember||'')}</div>
+  <div class="action-row"><button class="btn-listen" id="listenBtn">🔊 Listen</button><button class="btn-copy" id="copyBtn">📋 Copy</button></div>`;
+
+  const quiz=Array.isArray(b.quiz)?b.quiz.filter(q=>q&&q.q&&Array.isArray(q.options)&&q.options.length>=2):[];
+  if(quiz.length){
+    html+=`<div class="quiz-wrap"><span class="label">🧠 Quick Quiz — Test Yourself</span>
+    <div class="quiz-progress" id="quizProgress">0 of ${quiz.length} answered</div>
+    <div id="quizQuestions"></div>
+    <div class="quiz-score" id="quizScore"></div>
+    </div>`;
+  }
+  document.getElementById('modalContent').innerHTML=html;
+
+  const plainQuiz=quiz.length?`\n\nQUIZ:\n`+quiz.map((q,i)=>`${i+1}. ${q.q}\nAnswer: ${q.options[q.correct]}`).join('\n'):'';
+  const plain=`SUMMARY: ${b.summary}\n\nKEY POINTS:\n- ${(b.points||[]).join('\n- ')}\n\nEXAMPLE: ${b.example}\nREMEMBER: ${b.remember}${plainQuiz}`;
+  document.getElementById('listenBtn').onclick=()=>{speechSynthesis.cancel(); speechSynthesis.speak(new SpeechSynthesisUtterance(plain));};
+  document.getElementById('copyBtn').onclick=()=>{navigator.clipboard.writeText(plain).then(()=>{document.getElementById('copyBtn').textContent='✅ Copied'; setTimeout(()=>document.getElementById('copyBtn').textContent='📋 Copy',1400);});};
+
+  if(quiz.length) buildQuiz(quiz);
+}
+function buildQuiz(quiz){
+  const container=document.getElementById('quizQuestions');
+  const answered=new Array(quiz.length).fill(false);
+  let score=0;
+  quiz.forEach((q,qi)=>{
+    const qDiv=document.createElement('div'); qDiv.className='quiz-q';
+    qDiv.innerHTML=`<div class="quiz-q-text">${qi+1}. ${escapeHtml(q.q)}</div><div class="quiz-opts"></div><div class="quiz-explain"></div>`;
+    const optsDiv=qDiv.querySelector('.quiz-opts');
+    q.options.forEach((opt,oi)=>{
+      const btn=document.createElement('button'); btn.className='quiz-opt'; btn.textContent=opt;
+      btn.onclick=()=>{
+        if(answered[qi])return; answered[qi]=true;
+        [...optsDiv.children].forEach(b=>b.classList.add('disabled'));
+        if(oi===q.correct){btn.classList.add('correct'); score++;}
+        else{btn.classList.add('wrong'); if(optsDiv.children[q.correct])optsDiv.children[q.correct].classList.add('correct');}
+        const ex=qDiv.querySelector('.quiz-explain'); ex.textContent=(q.explain||''); ex.style.display='block';
+        updateQuizProgress();
+      };
+      optsDiv.appendChild(btn);
+    });
+    container.appendChild(qDiv);
+  });
+  function updateQuizProgress(){
+    const done=answered.filter(Boolean).length;
+    document.getElementById('quizProgress').textContent=`${done} of ${quiz.length} answered`;
+    if(done===quiz.length){
+      const scoreEl=document.getElementById('quizScore');
+      scoreEl.style.display='block';
+      scoreEl.textContent=`🏆 Score: ${score} / ${quiz.length}`;
+    }
+  }
+}
+function escapeHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+</script>
+</body>
+</html>
