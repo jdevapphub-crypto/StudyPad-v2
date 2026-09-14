@@ -1,7 +1,8 @@
-const CACHE_NAME = 'studypad-v1';
+const CACHE_NAME = 'studypad-v2'; // Bumped from v1 to force update
 const ASSETS = [
   './',
   './index.html',
+  './library.html',          // <-- Added the library page
   './manifest.json',
   './sw.js',
   './icons/icon-192.png',
@@ -27,13 +28,34 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch: cache-first, fallback to network, then to cached index
+// Fetch: network-first for pages, cache-first for assets
 self.addEventListener('fetch', (event) => {
   // Don't intercept cross-origin (ads, external APIs)
   if (!event.request.url.startsWith(self.location.origin)) {
     return;
   }
 
+  // 1. NETWORK-FIRST for HTML/Navigation (Ensures site updates)
+  if (event.request.mode === 'navigate' || (event.request.headers.get('accept') && event.request.headers.get('accept').includes('text/html'))) {
+    event.respondWith(
+      fetch(event.request)
+        .then(response => {
+          // Cache the new HTML version
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+          return response;
+        })
+        .catch(() => {
+          // If offline, fallback to cache
+          return caches.match(event.request).then(cached => {
+            return cached || caches.match('./index.html');
+          });
+        })
+    );
+    return;
+  }
+
+  // 2. CACHE-FIRST for other assets (Images, CSS, JS)
   event.respondWith(
     caches.match(event.request).then(cached => {
       if (cached) return cached;
@@ -46,10 +68,8 @@ self.addEventListener('fetch', (event) => {
         }
         return response;
       }).catch(() => {
-        // Offline fallback: serve index.html for navigation requests
-        if (event.request.mode === 'navigate') {
-          return caches.match('./index.html');
-        }
+        // Offline fallback for non-navigation requests
+        return caches.match('./index.html');
       });
     })
   );
